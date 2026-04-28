@@ -1,0 +1,40 @@
+# 快速验证工作流
+# 用途：
+# - 检查脚本、feeds、配置拼接和 defconfig 是否正常
+# - 不发布 release
+# - 通常在大改 GENERAL.txt 或脚本后先跑这一条
+
+name: MT3600BE-TEST
+
+on:
+  workflow_dispatch:
+    inputs:
+      immortalwrt_branch:
+        description: 需要验证的 VIKINGYFY/immortalwrt 分支
+        required: true
+        default: owrt
+        type: string
+      cleanup_runner:
+        description: 验证前是否先清理 runner 里预装的大目录
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # 复用公共核心工作流，只切换成 test_only 模式。
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      wrt_config: MT3600BE
+      wrt_name: GL-MT3600BE TEST
+      wrt_device_name: glinet_gl-mt3600be
+      wrt_device_dts: mt7987a-glinet-gl-mt3600be
+      # TEST 工作流也使用 Aurora，确保主题相关改动能被提前验证到。
+      wrt_theme: aurora
+      wrt_branch: ${{ inputs.immortalwrt_branch }}
+      cleanup_runner: ${{ inputs.cleanup_runner }}
+      publish_release: false
+      test_only: true

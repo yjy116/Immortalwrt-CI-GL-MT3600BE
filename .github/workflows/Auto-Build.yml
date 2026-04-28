@@ -1,0 +1,31 @@
+name: Auto-Build
+
+run-name: >-
+  自动编译 | 分支=owrt | 执行者=${{ github.actor }}
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 定时正式编译
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTO_BUILD_ENABLED != 'false' }}
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      wrt_config: MT3600BE
+      wrt_name: GL-MT3600BE
+      wrt_device_name: glinet_gl-mt3600be
+      wrt_device_dts: mt7987a-glinet-gl-mt3600be
+      wrt_theme: aurora
+      wrt_branch: owrt
+      cleanup_runner: true
+      publish_release: true

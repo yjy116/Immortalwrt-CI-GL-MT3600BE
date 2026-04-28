@@ -1,0 +1,52 @@
+# 正式编译工作流
+# 用途：
+# - 手动触发完整编译
+# - 成功后可自动发布到 GitHub Releases
+# - 也支持在推送关键配置/脚本时自动触发
+
+name: MT3600BE
+
+on:
+  workflow_dispatch:
+    inputs:
+      immortalwrt_branch:
+        description: 需要编译的 VIKINGYFY/immortalwrt 分支
+        required: true
+        default: owrt
+        type: string
+      cleanup_runner:
+        description: 编译前是否先清理 runner 里预装的大目录
+        required: true
+        default: true
+        type: boolean
+      publish_release:
+        description: 编译成功后是否自动发布到 GitHub Releases
+        required: true
+        default: true
+        type: boolean
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/**"
+      - "Config/**"
+      - "Scripts/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # 正式工作流同样复用公共核心逻辑，只是开启发布开关。
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      wrt_config: MT3600BE
+      wrt_name: GL-MT3600BE
+      wrt_device_name: glinet_gl-mt3600be
+      wrt_device_dts: mt7987a-glinet-gl-mt3600be
+      # Aurora 作为默认主题，和参考项目保持同一思路。
+      wrt_theme: aurora
+      wrt_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.immortalwrt_branch || 'owrt' }}
+      cleanup_runner: ${{ github.event_name != 'workflow_dispatch' || inputs.cleanup_runner }}
+      publish_release: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_release }}

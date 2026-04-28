@@ -1,0 +1,342 @@
+# 公共核心工作流
+# 说明：
+# - MT3600BE-TEST 和 MT3600BE 都复用这一份流程
+# - 外层工作流只负责传入“机型、分支、是否发布”等参数
+# - 真正的编译、缓存、产物收集逻辑统一收口在这里
+
+name: WRT-CORE
+
+on:
+  workflow_call:
+    inputs:
+      # 机型名称和设备参数由外层工作流传入，便于后续复制到其他机型仓库时复用。
+      wrt_config:
+        required: true
+        type: string
+      wrt_name:
+        required: true
+        type: string
+      wrt_device_name:
+        required: true
+        type: string
+      wrt_device_dts:
+        required: true
+        type: string
+      # 主题名称默认固定为 aurora。
+      # 这样 Settings.sh 和 Packages.sh 可以统一按同一个值处理主题源码与默认主题切换。
+      wrt_theme:
+        required: false
+        type: string
+        default: aurora
+
+      # 上游源码仓库与分支。
+      wrt_repo:
+        required: false
+        type: string
+        default: https://github.com/VIKINGYFY/immortalwrt.git
+      wrt_branch:
+        required: false
+        type: string
+        default: owrt
+
+      # cleanup_runner=true 时会提前删除 GitHub runner 上占空间的大目录。
+      cleanup_runner:
+        required: false
+        type: boolean
+        default: true
+
+      # 正式编译时可以选择是否自动发布到 GitHub Releases。
+      publish_release:
+        required: false
+        type: boolean
+        default: true
+
+      # TEST 工作流会把它设为 true：
+      # 只生成配置和日志，不走完整固件编译。
+      test_only:
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  # 同一个机型 + 同一个分支共用一个并发组。
+  # 这里不自动取消旧任务，避免误杀已经快跑完的编译。
+  group: ${{ inputs.wrt_config }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 编译 / ${{ inputs.wrt_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      # 统一通过环境变量把工作流输入传给脚本层，方便脚本同时支持本地和 CI。
+      WRT_CONFIG: ${{ inputs.wrt_config }}
+      WRT_NAME: ${{ inputs.wrt_name }}
+      WRT_DEVICE_LABEL: ${{ inputs.wrt_name }}
+      DEVICE_NAME: ${{ inputs.wrt_device_name }}
+      DEVICE_DTS: ${{ inputs.wrt_device_dts }}
+      WRT_THEME: ${{ inputs.wrt_theme }}
+      REPO_URL: ${{ inputs.wrt_repo }}
+      REPO_BRANCH: ${{ inputs.wrt_branch }}
+      RELEASE_TAG_PREFIX: mt3600be
+
+    steps:
+      - name: 检出辅助仓库
+        uses: actions/checkout@v5
+
+      # 输出基础环境信息，后面看日志时能更快判断 runner 资源情况。
+      - name: 显示 Runner 信息
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          df -h /
+          df -h /mnt || true
+          nproc
+
+      # GitHub 免费 runner 的磁盘空间比较紧张，这一步提前清理无关的大目录。
+      - name: 释放磁盘空间
+        if: ${{ inputs.cleanup_runner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/lib/android \
+            /opt/microsoft \
+            /usr/share/swift \
+            /usr/local/.ghcup \
+            /usr/share/miniconda \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/google/chrome \
+            /opt/microsoft/msedge \
+            /usr/local/share/chromium
+          sudo docker system prune -af >/dev/null 2>&1 || true
+          sudo apt-get clean
+          df -h /
+          df -h /mnt || true
+
+      # 选择真正的工作目录：
+      # 如果 /mnt 空间更大，就优先把编译树、缓存目录都放过去。
+      - name: 选择编译工作目录
+        id: workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          work_root="/home/runner/work/_fw"
+          if [[ -d /mnt ]] && [[ "$(df --output=avail -k /mnt | tail -1 | tr -dc '0-9')" -gt 10485760 ]]; then
+            work_root="/mnt/_fw"
+          fi
+
+          sudo mkdir -p "${work_root}"
+          sudo chown -R "${USER}:${USER}" "${work_root}"
+
+          cache_root="${work_root}/cache"
+          dl_dir="${cache_root}/dl"
+          ccache_dir="${cache_root}/ccache"
+          build_root="${work_root}/immortalwrt-${WRT_CONFIG}"
+          vendor_root="${work_root}/immortalwrt-vendor"
+
+          mkdir -p "${dl_dir}" "${ccache_dir}"
+
+          {
+            echo "WORK_ROOT=${work_root}"
+            echo "CACHE_ROOT=${cache_root}"
+            echo "DL_DIR=${dl_dir}"
+            echo "CCACHE_DIR=${ccache_dir}"
+            echo "BUILD_ROOT=${build_root}"
+            echo "VENDOR_ROOT=${vendor_root}"
+          } >> "${GITHUB_ENV}"
+
+          {
+            echo "work_root=${work_root}"
+            echo "cache_root=${cache_root}"
+            echo "dl_dir=${dl_dir}"
+            echo "ccache_dir=${ccache_dir}"
+            echo "build_root=${build_root}"
+            echo "vendor_root=${vendor_root}"
+          } >> "${GITHUB_OUTPUT}"
+
+          df -h /
+          df -h "${work_root}"
+
+      # dl 缓存：下载过的源码包、补丁和工具压缩包。
+      - name: 恢复下载缓存
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ steps.workspace.outputs.dl_dir }}
+          key: ${{ runner.os }}-dl-${{ inputs.wrt_branch }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-dl-${{ inputs.wrt_branch }}-
+            ${{ runner.os }}-dl-
+
+      # ccache：重复编译时的最直接提速手段之一。
+      - name: 恢复 ccache 缓存
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ steps.workspace.outputs.ccache_dir }}
+          key: ${{ runner.os }}-ccache-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-
+            ${{ runner.os }}-ccache-${{ inputs.wrt_branch }}-
+
+      # 依赖安装不直接写在 workflow，而是交给仓库脚本统一维护。
+      - name: 安装编译依赖
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          bash Scripts/bootstrap-ubuntu.sh
+
+      # 准备源码树，但不在这里写 git clone/fetch 细节。
+      - name: 准备源码树
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash Scripts/build-immortalwrt.sh prepare-tree
+
+      # host/toolchain 缓存是第一次成功后最关键的提速来源。
+      - name: 恢复 host/toolchain 缓存
+        id: host_tool_cache
+        if: ${{ !inputs.test_only }}
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/host
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/hostpkg
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/toolchain-*
+          key: ${{ runner.os }}-hosttool-full-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-hosttool-full-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-
+            ${{ runner.os }}-hosttool-warm-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-${{ github.sha }}
+            ${{ runner.os }}-hosttool-warm-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-
+            ${{ runner.os }}-hosttool-warm-${{ inputs.wrt_branch }}-
+
+      # 判断这次是否已经真正恢复到 host/toolchain 缓存。
+      - name: 检测 host/toolchain 缓存状态
+        id: host_tool_state
+        if: ${{ !inputs.test_only }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cache_present=0
+          if compgen -G "${BUILD_ROOT}/staging_dir/host" >/dev/null; then
+            cache_present=1
+          elif compgen -G "${BUILD_ROOT}/staging_dir/hostpkg" >/dev/null; then
+            cache_present=1
+          elif compgen -G "${BUILD_ROOT}/staging_dir/toolchain-*" >/dev/null; then
+            cache_present=1
+          fi
+
+          echo "cache_present=${cache_present}" >> "${GITHUB_OUTPUT}"
+
+      # 首次编译时单独预热 host/toolchain，把最慢的阶段先缓存下来。
+      - name: 预热 host/toolchain
+        if: ${{ !inputs.test_only && steps.host_tool_state.outputs.cache_present != '1' }}
+        shell: bash
+        env:
+          BUILD_VERBOSE: 0
+        run: |
+          set -euo pipefail
+          export JOBS="$(nproc)"
+          bash Scripts/build-immortalwrt.sh prewarm-host-tool
+
+      # 预热完成后先保存一份 warm 缓存，下一次就不必再从零开始。
+      - name: 保存预热 host/toolchain 缓存
+        if: ${{ !inputs.test_only && steps.host_tool_state.outputs.cache_present != '1' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/host
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/hostpkg
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/toolchain-*
+          key: ${{ runner.os }}-hosttool-warm-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-${{ github.sha }}
+
+      # 真正的编译步骤。
+      # TEST_ONLY=1 时，脚本会在生成 .config 后提前结束，不完整编译固件。
+      - name: 编译固件或生成配置
+        shell: bash
+        env:
+          TEST_ONLY: ${{ inputs.test_only && '1' || '0' }}
+          BUILD_VERBOSE: 0
+        run: |
+          set -euo pipefail
+          export JOBS="$(nproc)"
+          bash Scripts/build-immortalwrt.sh 2>&1 | tee "${RUNNER_TEMP}/build.log"
+
+      # 这一步保存“完整成功后的 host/toolchain 缓存”，优先级高于 warm 缓存。
+      - name: 保存完整 host/toolchain 缓存
+        if: ${{ !inputs.test_only && success() && steps.host_tool_cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/host
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/hostpkg
+            ${{ steps.workspace.outputs.build_root }}/staging_dir/toolchain-*
+          key: ${{ runner.os }}-hosttool-full-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-${{ github.sha }}
+
+      # 无论成功失败，都尽量把可复用缓存存下来。
+      - name: 保存下载缓存
+        if: ${{ always() }}
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.workspace.outputs.dl_dir }}
+          key: ${{ runner.os }}-dl-${{ inputs.wrt_branch }}-${{ github.sha }}
+
+      - name: 保存 ccache 缓存
+        if: ${{ always() }}
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.workspace.outputs.ccache_dir }}
+          key: ${{ runner.os }}-ccache-${{ inputs.wrt_branch }}-${{ inputs.wrt_config }}-${{ github.sha }}
+
+      # 统一由脚本收集 artifacts，避免 workflow 里散落很多 cp 命令。
+      - name: 收集产物
+        if: ${{ always() }}
+        shell: bash
+        env:
+          TEST_ONLY: ${{ inputs.test_only && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          bash Scripts/Handles.sh collect-artifacts
+
+      - name: 上传产物
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ inputs.wrt_config }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/mt3600be-artifacts
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      # 只有正式编译且允许发布时，才准备 release 元数据。
+      - name: 准备 Release 元数据
+        id: release_meta
+        if: ${{ !inputs.test_only && inputs.publish_release }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash Scripts/Handles.sh prepare-release-metadata
+
+      # 发布为 prerelease，方便多次迭代和回滚。
+      - name: 发布 GitHub Release
+        if: ${{ !inputs.test_only && inputs.publish_release }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          gh release create "${{ steps.release_meta.outputs.tag }}" \
+            "${RUNNER_TEMP}/mt3600be-artifacts/"* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${{ steps.release_meta.outputs.title }}" \
+            --notes-file "${{ steps.release_meta.outputs.notes_file }}" \
+            --target "${GITHUB_SHA}" \
+            --prerelease
