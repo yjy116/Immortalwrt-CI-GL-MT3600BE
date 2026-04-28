@@ -1,0 +1,12 @@
+# 机型专属配置
+# 这份文件只负责“把编译目标锁定到 GL-MT3600BE”。
+# 日常加减插件时通常不要改这里，统一改 GENERAL.txt 即可。
+
+# 目标平台：MediaTek
+CONFIG_TARGET_mediatek=y
+
+# 子平台：Filogic
+CONFIG_TARGET_mediatek_filogic=y
+
+# 具体设备：GL.iNet GL-MT3600BE
+CONFIG_TARGET_mediatek_filogic_DEVICE_glinet_gl-mt3600be=y
