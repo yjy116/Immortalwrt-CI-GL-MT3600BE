@@ -5,7 +5,10 @@ run-name: >-
 
 on:
   schedule:
-    - cron: "0 16 * * *"
+    # GitHub Actions 的 cron 固定使用 UTC。
+    # 这里在 UTC 10/20/28-31 日 16:10 触发检查，对应北京时间次日 00:10。
+    # 是否真正编译由下面的 schedule_guard 按北京时间 1/11/21/31 日判断。
+    - cron: "10 16 10,20,28-31 * *"
   workflow_dispatch:
 
 concurrency:
@@ -16,9 +19,47 @@ permissions:
   contents: write
 
 jobs:
+  schedule_guard:
+    name: 判断北京时间指定日期
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.guard.outputs.should_build }}
+      beijing_date: ${{ steps.guard.outputs.beijing_date }}
+    steps:
+      - name: 判断是否需要编译
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 手动运行时永远放行，避免临时编译被 10 天周期拦住。
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "should_build=true" >> "${GITHUB_OUTPUT}"
+            echo "beijing_date=$(TZ=Asia/Shanghai date +%F)" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # 自动编译日期：北京时间每月 1/11/21/31 日 00:10。
+          # 31 日只会在实际存在 31 日的月份命中。
+          beijing_date="$(TZ=Asia/Shanghai date +%F)"
+          beijing_day="$(TZ=Asia/Shanghai date +%d)"
+
+          echo "beijing_date=${beijing_date}" >> "${GITHUB_OUTPUT}"
+          case "${beijing_day}" in
+            01|11|21|31)
+              echo "should_build=true" >> "${GITHUB_OUTPUT}"
+              echo "北京时间 ${beijing_date} 命中每月 1/11/21/31 自动编译日期。"
+              ;;
+            *)
+              echo "should_build=false" >> "${GITHUB_OUTPUT}"
+              echo "北京时间 ${beijing_date} 未命中自动编译日期，本次只检查不编译。"
+              ;;
+          esac
+
   build:
-    name: 定时正式编译
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTO_BUILD_ENABLED != 'false' }}
+    name: 按日期正式编译
+    needs: schedule_guard
+    if: ${{ needs.schedule_guard.outputs.should_build == 'true' && (github.event_name == 'workflow_dispatch' || vars.AUTO_BUILD_ENABLED != 'false') }}
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       wrt_config: MT3600BE
