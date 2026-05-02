@@ -60,6 +60,10 @@ jobs:
     name: 按日期正式编译
     needs: schedule_guard
     if: ${{ needs.schedule_guard.outputs.should_build == 'true' && (github.event_name == 'workflow_dispatch' || vars.AUTO_BUILD_ENABLED != 'false') }}
+    # Release 发布需要 contents: write；这里写在调用方 job 上，
+    # WRT-CORE 本身保持不强制申请写权限，TEST 工作流会更稳。
+    permissions:
+      contents: write
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       wrt_config: MT3600BE

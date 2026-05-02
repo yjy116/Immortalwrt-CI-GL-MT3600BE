@@ -39,6 +39,10 @@ permissions:
 jobs:
   build:
     # 正式工作流同样复用公共核心逻辑，只是开启发布开关。
+    # Release 发布需要 contents: write；这里写在调用方 job 上，
+    # 避免 WRT-CORE 强制申请写权限影响 TEST 工作流。
+    permissions:
+      contents: write
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       wrt_config: MT3600BE
