@@ -3,11 +3,10 @@
 # 编译产物与 Release 辅助脚本
 #
 # 作用：
-# - 把固件、manifest、build.log、.config 等文件统一收集到 artifact 目录
-# - 生成 GitHub Release 所需的 tag、标题和 release note
+# - 把固件、manifest、build.log、.config 等文件统一收集到 artifact 目录。
+# - 生成 GitHub Release 所需的 tag、标题和发布说明。
 #
-# 这样工作流本身可以保持简洁，具体命名和打包逻辑统一收口在这里。
-
+# 这样工作流本身可以保持简洁，具体命名、打包和发布信息都统一收口在这里。
 set -euo pipefail
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -26,8 +25,7 @@ RELEASE_TAG_PREFIX="${RELEASE_TAG_PREFIX:-mt3600be}"
 TEST_ONLY="${TEST_ONLY:-0}"
 
 # 收集 artifacts。
-# TEST_ONLY=1 时只收集日志和 .config；
-# 正式编译则额外收集固件、manifest、buildinfo、json 等文件。
+# TEST_ONLY=1 时只收集日志和 .config；正式编译则额外收集固件、manifest、buildinfo、json 等文件。
 collect_artifacts() {
   local file
   local files=()
@@ -74,12 +72,61 @@ collect_artifacts() {
   )
 }
 
-# 生成 GitHub Release 的元数据。
+# 从本次实际拉取的源码树里识别内核版本。
+# 优先读取目标平台 Makefile 的 KERNEL_PATCHVER，再读取 generic/kernel-x.xx 里的小版本号。
+detect_kernel_version() {
+  local kernel_patchver=""
+  local kernel_suffix=""
+  local target_makefile="${BUILD_ROOT}/target/linux/mediatek/Makefile"
+  local kernel_details_file
+
+  if [[ -f "${target_makefile}" ]]; then
+    kernel_patchver="$(awk -F':=' '
+      /^[[:space:]]*KERNEL_PATCHVER[[:space:]]*:=/ {
+        gsub(/[[:space:]]/, "", $2)
+        print $2
+        exit
+      }
+    ' "${target_makefile}")"
+  fi
+
+  if [[ -z "${kernel_patchver}" && -f "${BUILD_ROOT}/.config" ]]; then
+    kernel_patchver="$(awk -F= '
+      /^CONFIG_LINUX_[0-9]+_[0-9]+(=y)?$/ {
+        gsub(/^CONFIG_LINUX_/, "", $1)
+        gsub(/_/, ".", $1)
+        print $1
+        exit
+      }
+    ' "${BUILD_ROOT}/.config")"
+  fi
+
+  if [[ -z "${kernel_patchver}" ]]; then
+    echo "unknown"
+    return 0
+  fi
+
+  kernel_details_file="${BUILD_ROOT}/target/linux/generic/kernel-${kernel_patchver}"
+  if [[ -f "${kernel_details_file}" ]]; then
+    kernel_suffix="$(awk -F'=' -v patchver="${kernel_patchver}" '
+      $1 ~ "^[[:space:]]*LINUX_VERSION-" patchver "[[:space:]]*$" {
+        gsub(/[[:space:]]/, "", $2)
+        print $2
+        exit
+      }
+    ' "${kernel_details_file}")"
+  fi
+
+  echo "Linux ${kernel_patchver}${kernel_suffix}"
+}
+
+# 生成 GitHub Release 元数据。
 # tag 会带上分支、UTC 时间和 run number，方便之后回看每次自动构建。
 prepare_release_metadata() {
   local branch_slug
   local build_commit
   local build_time
+  local kernel_version
   local tag
   local title
   local notes_file
@@ -87,6 +134,7 @@ prepare_release_metadata() {
   branch_slug="$(printf '%s' "${REPO_BRANCH}" | tr '/ ' '--' | tr -cd '[:alnum:]._-')"
   build_commit="$(git -C "${BUILD_ROOT}" rev-parse --short=12 HEAD)"
   build_time="$(date -u +'%Y%m%d-%H%M%S')"
+  kernel_version="$(detect_kernel_version)"
   tag="${RELEASE_TAG_PREFIX}-${branch_slug}-${build_time}-run${GITHUB_RUN_NUMBER:-local}"
   title="${WRT_DEVICE_LABEL} ImmortalWrt ${branch_slug} ${build_time}"
   notes_file="${RUNNER_TEMP}/release-notes.md"
@@ -96,6 +144,7 @@ prepare_release_metadata() {
     echo
     echo "- Config: \`${WRT_CONFIG}\`"
     echo "- Branch: \`${REPO_BRANCH}\`"
+    echo "- Kernel: \`${kernel_version}\`"
     echo "- Commit: \`${build_commit}\`"
     if [[ -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]]; then
       echo "- Workflow run: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
