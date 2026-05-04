@@ -120,7 +120,10 @@ CONFIG_PACKAGE_luci-app-samba4=y
 CONFIG_PACKAGE_luci-app-tailscale=y
 CONFIG_PACKAGE_luci-app-ttyd=y
 CONFIG_PACKAGE_luci-app-nlbwmon=y
-CONFIG_PACKAGE_luci-app-netspeedtest=y
+# VIKINGYFY 模板只更新 netspeedtest 源码，不默认启用它。
+# 当前 owrt 源缺少 luci-app-netspeedtest 依赖的 python3-email 与 python3-pkg-resources，
+# 直接编进固件会在 package/install 阶段失败。
+CONFIG_PACKAGE_luci-app-netspeedtest=n
 CONFIG_PACKAGE_luci-app-wolplus=y
 CONFIG_PACKAGE_luci-app-ddns=y
 CONFIG_PACKAGE_luci-app-zerotier=y
