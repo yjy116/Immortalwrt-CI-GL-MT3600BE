@@ -33,7 +33,6 @@ CONFIG_TARGET_ROOTFS_INITRAMFS=n
 # @vendor luci-app-fancontrol|https://github.com/bigmalloy/luci-app-fancontrol.git|main|openwrt-feed:package/luci-app-fancontrol|
 # @vendor luci-app-tailscale|https://github.com/asvow/luci-app-tailscale.git|main|.:package/luci-app-tailscale|tailscale-compat
 # @vendor luci-app-mini-diskmanager|https://github.com/4IceG/luci-app-mini-diskmanager.git|main|.:package/luci-app-mini-diskmanager|
-# @vendor ookla-speedtest|https://github.com/sirpdboy/netspeedtest.git|main|ookla-speedtest:package/ookla-speedtest|
 # @vendor luci-app-iperf3|https://github.com/Gevatter-Tod/luci-app-iperf3.git|main|.:package/luci-app-iperf3|
 # @vendor luci-app-speedtest|https://github.com/animegasan/luci-app-speedtest.git|speedtestcpp|.:package/luci-app-speedtest|
 
@@ -97,7 +96,6 @@ CONFIG_PACKAGE_curl=y
 CONFIG_PACKAGE_dmesg=y
 CONFIG_PACKAGE_htop=y
 CONFIG_PACKAGE_iperf3=y
-CONFIG_PACKAGE_ookla-speedtest=y
 CONFIG_PACKAGE_speedtestcpp=y
 CONFIG_PACKAGE_ip-full=y
 CONFIG_PACKAGE_tcpdump=y
