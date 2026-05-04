@@ -33,7 +33,7 @@ CONFIG_TARGET_ROOTFS_INITRAMFS=n
 # @vendor luci-app-fancontrol|https://github.com/bigmalloy/luci-app-fancontrol.git|main|openwrt-feed:package/luci-app-fancontrol|
 # @vendor luci-app-tailscale|https://github.com/asvow/luci-app-tailscale.git|main|.:package/luci-app-tailscale|tailscale-compat
 # @vendor luci-app-mini-diskmanager|https://github.com/4IceG/luci-app-mini-diskmanager.git|main|.:package/luci-app-mini-diskmanager|
-# @vendor luci-app-netspeedtest|https://github.com/sirpdboy/netspeedtest.git|main|luci-app-netspeedtest:package/luci-app-netspeedtest;homebox:package/homebox;ookla-speedtest:package/ookla-speedtest|
+# @vendor ookla-speedtest|https://github.com/sirpdboy/netspeedtest.git|main|ookla-speedtest:package/ookla-speedtest|
 
 # LuCI 基础
 # autocore 用来给状态页补充 CPU/WiFi 温度等信息。
@@ -95,6 +95,7 @@ CONFIG_PACKAGE_curl=y
 CONFIG_PACKAGE_dmesg=y
 CONFIG_PACKAGE_htop=y
 CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_ookla-speedtest=y
 CONFIG_PACKAGE_ip-full=y
 CONFIG_PACKAGE_tcpdump=y
 CONFIG_PACKAGE_nano=y
@@ -120,10 +121,6 @@ CONFIG_PACKAGE_luci-app-samba4=y
 CONFIG_PACKAGE_luci-app-tailscale=y
 CONFIG_PACKAGE_luci-app-ttyd=y
 CONFIG_PACKAGE_luci-app-nlbwmon=y
-# VIKINGYFY 模板只更新 netspeedtest 源码，不默认启用它。
-# 当前 owrt 源缺少 luci-app-netspeedtest 依赖的 python3-email 与 python3-pkg-resources，
-# 直接编进固件会在 package/install 阶段失败。
-CONFIG_PACKAGE_luci-app-netspeedtest=n
 CONFIG_PACKAGE_luci-app-wolplus=y
 CONFIG_PACKAGE_luci-app-ddns=y
 CONFIG_PACKAGE_luci-app-zerotier=y
