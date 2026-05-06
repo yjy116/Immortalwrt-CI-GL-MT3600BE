@@ -170,6 +170,20 @@
 - `daed` 这类依赖 eBPF / BTF / LLVM toolchain 的功能，更适合单独放在内核 fragment 里
 - 这样后续 Linux / Kconfig 变化时，排查范围会更清晰
 
+另外要特别注意一件事：
+
+- GitHub Actions / CI 编译本身不能回答交互式 Kconfig 问题
+- 但当前 MT3600BE 这条 `mediatek / filogic` 线已经在 [MT3600BE.kernel.txt](./Config/MT3600BE.kernel.txt) 里明确写了 `CONFIG_KERNEL_ARM64_BRBE=y`
+- 这意味着对当前项目来说，`ARM64_BRBE` 不是“没人回答的新题”，而是“已经提前给了答案”
+
+所以当前项目**不需要**照搬某些 `qualcommax` 项目里那种“强制关闭 `ARM64_BRBE`”的修复。
+只有在将来真的看到：
+
+- `ARM64_BRBE [Y/n/?] (NEW)` 交互卡死
+- 或者 `defconfig` 后这个符号被异常丢掉
+
+才需要重新评估是否要给 `mediatek` 单独加类似修复。
+
 ### 5. 如果后面 `daed` 又编译失败，优先看哪里
 
 优先按下面顺序排查：
