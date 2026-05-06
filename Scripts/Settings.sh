@@ -20,6 +20,7 @@ CONFIG_DIR="${CONFIG_DIR:-${PROJECT_ROOT}/Config}"
 WRT_CONFIG="${WRT_CONFIG:-MT3600BE}"
 WRT_CONFIG_FILE="${WRT_CONFIG_FILE:-${CONFIG_DIR}/${WRT_CONFIG}.txt}"
 GENERAL_CONFIG_FILE="${GENERAL_CONFIG_FILE:-${CONFIG_DIR}/GENERAL.txt}"
+KERNEL_CONFIG_FILE="${KERNEL_CONFIG_FILE:-${CONFIG_DIR}/${WRT_CONFIG}.kernel.txt}"
 WORK_ROOT="${WORK_ROOT:-$HOME/work}"
 BUILD_ROOT="${BUILD_ROOT:-${WORK_ROOT}/immortalwrt-${WRT_CONFIG,,}}"
 DEVICE_NAME="${DEVICE_NAME:-glinet_gl-mt3600be}"
@@ -35,6 +36,19 @@ REQUIRED_CONFIG_SYMBOLS=(
   "CONFIG_PACKAGE_luci=y"
   "CONFIG_PACKAGE_default-settings-chn=y"
   "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y"
+)
+DAED_REQUIRED_CONFIG_SYMBOLS=(
+  "CONFIG_PACKAGE_daed=y"
+  "CONFIG_PACKAGE_luci-app-daed=y"
+  "CONFIG_BPF_TOOLCHAIN_BUILD_LLVM=y"
+  "CONFIG_KERNEL_DEBUG_INFO_BTF=y"
+  "CONFIG_KERNEL_BPF_EVENTS=y"
+  "CONFIG_KERNEL_CGROUP_BPF=y"
+  "CONFIG_KERNEL_XDP_SOCKETS=y"
+  "CONFIG_KERNEL_ARM64_BRBE=y"
+  "CONFIG_PACKAGE_kmod-sched-bpf=y"
+  "CONFIG_PACKAGE_kmod-sched-core=y"
+  "CONFIG_PACKAGE_kmod-xdp-sockets-diag=y"
 )
 
 # OpenWrt/ImmortalWrt 在 /mnt/c 这类 Windows 挂载盘上编译非常不稳，
@@ -179,6 +193,27 @@ validate_required_config_symbols() {
   fi
 }
 
+validate_daed_config_symbols() {
+  local missing=()
+  local symbol
+
+  if ! general_config_package_enabled "luci-app-daed"; then
+    return 0
+  fi
+
+  for symbol in "${DAED_REQUIRED_CONFIG_SYMBOLS[@]}"; do
+    if ! grep -q "^${symbol}$" .config; then
+      missing+=("${symbol}")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    echo "WARNING: daed required config symbols are missing after defconfig:"
+    printf '  %s\n' "${missing[@]}"
+    echo "The build will continue, but luci-app-daed may fail to compile or daed may fail at runtime."
+  fi
+}
+
 validate_device_profile_symbols() {
   local expected_device_symbols=()
   local symbol
@@ -291,6 +326,13 @@ append_theme_packages_to_config() {
 apply_config_fragments() {
   apply_default_luci_theme
   cat "${GENERAL_CONFIG_FILE}" "${WRT_CONFIG_FILE}" > .config
+
+  # 内核/BPF 相关配置单独放在机型 kernel fragment 里，
+  # 避免把这类低频但关键的内核选项混进 GENERAL.txt。
+  if [[ -f "${KERNEL_CONFIG_FILE}" ]]; then
+    cat "${KERNEL_CONFIG_FILE}" >> .config
+  fi
+
   append_core_luci_language_packages
   append_theme_packages_to_config
   append_auto_i18n_packages_to_config
@@ -307,4 +349,5 @@ apply_config_fragments() {
 
   validate_device_profile_symbols
   validate_required_config_symbols
+  validate_daed_config_symbols
 }

@@ -1,0 +1,39 @@
+# MT3600BE 内核/BPF 额外配置片段
+#
+# 用途：
+# 1. 给 daed / luci-app-daed 打开 eBPF、BTF、调试信息等必要能力
+# 2. 把这类“内核侧配置”与 GENERAL.txt 里的“普通插件开关”分开维护
+# 3. 避免后续 Linux 6.18.x 新增 Kconfig 交互项时，把普通插件配置搅乱
+#
+# 说明：
+# - 这里使用的是 OpenWrt/ImmortalWrt 顶层 .config 片段写法
+# - CONFIG_KERNEL_* 会在编译时映射到内核 config
+# - 对于 daed 这类依赖 eBPF/BTF 的插件，这种单独 fragment 比直接塞进 GENERAL.txt 更稳
+
+# daed 所需的 BPF 工具链
+# CONFIG_BPF_TOOLCHAIN_NONE is not set
+# CONFIG_BPF_TOOLCHAIN_HOST is not set
+CONFIG_BPF_TOOLCHAIN_BUILD_LLVM=y
+CONFIG_DWARVES=y
+CONFIG_HAS_BPF_TOOLCHAIN=y
+CONFIG_NEED_BPF_TOOLCHAIN=y
+CONFIG_USE_LLVM_BUILD=y
+
+# daed 所需的内核调试/BTF 能力
+CONFIG_KERNEL_DEBUG_KERNEL=y
+CONFIG_KERNEL_DEBUG_INFO=y
+CONFIG_KERNEL_DEBUG_INFO_BTF=y
+CONFIG_KERNEL_DEBUG_INFO_BTF_MODULES=y
+CONFIG_KERNEL_MODULE_ALLOW_BTF_MISMATCH=y
+# CONFIG_KERNEL_DEBUG_INFO_REDUCED is not set
+
+# daed / eBPF 相关内核功能
+CONFIG_KERNEL_KPROBES=y
+CONFIG_KERNEL_KPROBE_EVENTS=y
+CONFIG_KERNEL_BPF_EVENTS=y
+CONFIG_KERNEL_CGROUP_BPF=y
+CONFIG_KERNEL_XDP_SOCKETS=y
+
+# Linux 6.18.26 及后续版本可能新增的 arm64 BRBE 选项
+# 放在单独 fragment 里，便于后续核对和维护
+CONFIG_KERNEL_ARM64_BRBE=y
