@@ -89,7 +89,6 @@
 - `luci-app-fancontrol`
 - `luci-app-tailscale`
 - `luci-app-iperf3`
-- `luci-app-daed`
 
 ### 3. 机型相关配置
 
@@ -133,6 +132,8 @@
 所以它除了在 [GENERAL.txt](./Config/GENERAL.txt) 里启用：
 
 - `CONFIG_PACKAGE_daed=y`
+- `CONFIG_PACKAGE_daed-geoip=y`
+- `CONFIG_PACKAGE_daed-geosite=y`
 - `CONFIG_PACKAGE_luci-app-daed=y`
 
 之外，还需要在 [MT3600BE.kernel.txt](./Config/MT3600BE.kernel.txt) 里额外补齐 `daed` 需要的内核配置。
@@ -144,49 +145,44 @@
 - 避免把大量内核选项直接塞进 `GENERAL.txt`，导致插件配置和内核配置混在一起
 - 后续内核选项变化时，可以更清楚地只在一个地方维护 `daed` 相关 fragment
 
-### 3. 为什么还要有 `daed-compat` 钩子
+### 3. 当前 `daed` 来源是什么
 
-当前项目使用的是第三方 `QiuSimons/luci-app-daed` 源。
+当前项目已经回归上游自带 `daed`，不再引入第三方 `QiuSimons/luci-app-daed`。
 
-实际编译时遇到过一个比较典型的问题：
+也就是说现在使用的是当前编译源默认 feeds 里的：
 
-- `package/daed` 的原始 OpenWrt 打包逻辑会手工复制 `apps/web/dist` 到 `wing/webrender/web`
-- 在当前上游源码组合下，这一步有时会导致 `webrender/web` 为空
-- 随后 Go 编译阶段会报错：`go:embed web: contains no embeddable files`
+- `immortalwrt/packages` 提供的 `daed`、`daed-geoip`、`daed-geosite`
+- `immortalwrt/luci` 提供的 `luci-app-daed`
 
-为了解决这个问题，项目在 [Packages.sh](./Scripts/Packages.sh) 里增加了 `daed-compat` 钩子：
+这样做的好处是：
 
-- 不再沿用旧的“手工复制 web 目录”逻辑
-- 改为尽量贴近 `dae-wing` 官方的 `bundle` 流程
-- 目标是保证前端静态资源在 Go 编译前已经正确生成并可嵌入
+- 结构更简单，不需要额外第三方源码同步规则
+- 后续跟随上游更新时更自然
+- 少掉一层 `Packages.sh` 兼容补丁，维护成本更低
 
-### 4. `vmlinux-btf` 是干什么的
+### 4. 为什么还保留 `MT3600BE.kernel.txt`
 
-`QiuSimons/luci-app-daed` 的 `package/daed/Makefile` 里存在对 `vmlinux-btf` 的可选依赖声明。
+即使已经回归上游自带 `daed`，也不建议把 `daed` 相关内核项重新塞回 `GENERAL.txt`。
 
-虽然当前项目默认走的是：
+原因很简单：
 
-- `CONFIG_DAED_USE_KERNEL_BTF=y`
-
-也就是优先使用内核自带 BTF，而不是强制走 `vmlinux-btf` 路线，但为了避免编译日志里持续出现依赖缺失 warning，项目里仍保留了：
-
-- `QiuSimons/vmlinux-btf` 第三方源声明
-
-这样做的目的主要是让依赖解析更完整，不是强制把 `vmlinux-btf` 打进固件。
+- `GENERAL.txt` 适合放普通插件开关
+- `daed` 这类依赖 eBPF / BTF / LLVM toolchain 的功能，更适合单独放在内核 fragment 里
+- 这样后续 Linux / Kconfig 变化时，排查范围会更清晰
 
 ### 5. 如果后面 `daed` 又编译失败，优先看哪里
 
 优先按下面顺序排查：
 
-1. 看 `package/daed` 是否报 `go:embed web` 相关错误
-2. 看 `apps/web/dist/index.html` 是否在构建阶段生成
-3. 看 `daed-compat` 钩子是否还成功匹配了上游 `package/daed/Makefile`
-4. 看 `MT3600BE.kernel.txt` 里的 BPF / BTF 相关项是否仍然存在
-5. 再考虑是不是上游 `QiuSimons/luci-app-daed` 或 `daeuniverse/daed` 本身发生了结构变化
+1. 看 `package/daed` 是否在 feeds 中正常存在
+2. 看 `luci-app-daed` 是否在 feeds 中正常存在
+3. 看 `MT3600BE.kernel.txt` 里的 BPF / BTF 相关项是否仍然存在
+4. 看当前上游分支是否调整了 `daed` 的依赖或内核要求
+5. 再考虑是不是上游 `immortalwrt/packages` 或 `immortalwrt/luci` 本身发生了结构变化
 
 一句话总结：
 
-`daed` 在这个项目里属于“需要单独照顾的第三方插件”，后续如果它再出问题，优先检查 [Packages.sh](./Scripts/Packages.sh) 和 [MT3600BE.kernel.txt](./Config/MT3600BE.kernel.txt)，而不是先怀疑普通 LuCI 插件配置。
+`daed` 在这个项目里已经回归为“上游自带、但仍需要额外内核能力”的插件，后续如果它再出问题，优先检查 [MT3600BE.kernel.txt](./Config/MT3600BE.kernel.txt) 和上游 feeds 状态，而不是先怀疑第三方同步脚本。
 
 ## 当前几个关键设计点
 
