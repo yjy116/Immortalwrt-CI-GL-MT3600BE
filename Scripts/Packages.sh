@@ -43,6 +43,28 @@ config_package_disabled() {
   ! config_package_enabled "${package_name}"
 }
 
+# 判断某个第三方包是否“需要被同步进编译树”。
+# 大多数包只有在 GENERAL.txt 里显式设为 =y 时才需要同步。
+# 但像 vmlinux-btf 这种“仅用于满足另一个包的可选依赖解析”的辅助包，
+# 即使不打进固件，只要 daed 已启用，也应该把包定义同步进来，
+# 这样可以消除 package/daed/Makefile 的依赖缺失 warning。
+vendor_package_required() {
+  local package_name="$1"
+
+  if config_package_enabled "${package_name}"; then
+    return 0
+  fi
+
+  case "${package_name}" in
+    vmlinux-btf)
+      config_package_enabled "daed"
+      return
+      ;;
+  esac
+
+  return 1
+}
+
 # 去掉字符串前后的空白，避免解析配置时把空格也当成内容。
 trim_whitespace() {
   local value="$1"
@@ -100,6 +122,7 @@ run_vendor_hook() {
   local openclash_po2lmo_dir
   local openclash_po2lmo_bin
   local tailscale_makefile
+  local daed_makefile
 
   case "${hook}" in
     ""|none)
@@ -131,6 +154,135 @@ run_vendor_hook() {
           echo "Patched tailscale package for luci-app-tailscale compatibility: ${tailscale_makefile}"
         fi
       done
+      ;;
+    daed-compat)
+      # QiuSimons/luci-app-daed 当前的 OpenWrt 打包脚本在部分上游组合下
+      # 会出现 webrender/web 为空，随后 go:embed 失败的问题。
+      # 这里不直接手写一串零散 sed，而是用一个带严格块匹配的
+      # Python 替换器去修 package/daed/Makefile：
+      # - 前端改为按上游 monorepo 的常规 pnpm build 方式构建
+      # - Go 编译改为走 dae-wing 自带的 bundle 流程
+      # 这样更贴近 daeuniverse/daed 与 dae-wing 的原生构建路径。
+      daed_makefile="${BUILD_ROOT}/package/daed/Makefile"
+
+      if [[ ! -f "${daed_makefile}" ]]; then
+        echo "daed Makefile was not found: ${daed_makefile}"
+        exit 1
+      fi
+
+      python3 - "${daed_makefile}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+replacements = [
+    (
+        """\t\tpushd $(DAED_BUILD_DIR) ; \\
+\t\t\tpnpm install ; \\
+\t\t\tpnpm build --filter daed ; \\
+\t\tpopd ; \\
+\t\tmkdir -p $(PKG_BUILD_DIR)/webrender/web ; \\
+\t\tcp -rf $(DAED_BUILD_DIR)/apps/web/dist/* $(PKG_BUILD_DIR)/webrender/web ; \\
+\t\tfind $(PKG_BUILD_DIR)/webrender/web -name "*.map" -type f -delete ; \\
+\t\tfind $(PKG_BUILD_DIR)/webrender/web -type f -size +4k ! -name "*.gz" ! -name "*.woff"  ! -name "*.woff2" -exec sh -c '\\
+\t\t\tgzip -9 -k "{}"; \\
+\t\t\tif [ "$$$$(stat -c %s {})" -lt "$$$$(stat -c %s {}.gz)" ]; then \\
+\t\t\t\trm {}.gz; \\
+\t\t\telse \\
+\t\t\t\trm {}; \\
+\t\t\tfi' \\
+\t\t";" ; \\
+""",
+        """\t\tpushd $(DAED_BUILD_DIR) ; \\
+\t\t\tpnpm install ; \\
+\t\t\tTURBO_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 pnpm build ; \\
+\t\tpopd ; \\
+\t\ttest -f $(DAED_BUILD_DIR)/apps/web/dist/index.html ; \\
+""",
+        "daed Build/Prepare web bundle block",
+    ),
+    (
+        """define Build/Compile
+\t( \\
+\t\tpushd $(PKG_BUILD_DIR) ; \\
+\t\texport \\
+\t\t$(GO_GENERAL_BUILD_CONFIG_VARS) \\
+\t\t$(GO_PKG_BUILD_CONFIG_VARS) \\
+\t\t$(GO_PKG_BUILD_VARS) ; \\
+\t\tgo generate ./... ; \\
+\t\tcd dae-core ; \\
+\t\texport \\
+\t\tBPF_CLANG="$(CLANG)" \\
+\t\tBPF_STRIP_FLAG="-strip=$(LLVM_STRIP)" \\
+\t\tBPF_CFLAGS="$(DAE_CFLAGS)" \\
+\t\tBPF_TARGET="bpfel,bpfeb" \\
+\t\tBPF_TRACE_TARGET="$(GO_ARCH)" ; \\
+\t\tgo generate ./control/control.go ; \\
+\t\tgo generate ./trace/trace.go ; \\
+\t\tpopd ; \\
+\t)
+\t$(call GoPackage/Build/Compile)
+endef
+""",
+        """define Build/Compile
+\t( \\
+\t\ttest -f $(DAED_BUILD_DIR)/apps/web/dist/index.html ; \\
+\t\tpushd $(PKG_BUILD_DIR) ; \\
+\t\texport \\
+\t\t$(GO_GENERAL_BUILD_CONFIG_VARS) \\
+\t\t$(GO_PKG_BUILD_CONFIG_VARS) \\
+\t\t$(GO_PKG_BUILD_VARS) \\
+\t\t$(GO_PKG_TARGET_VARS) \\
+\t\tBPF_CLANG="$(CLANG)" \\
+\t\tBPF_STRIP_FLAG="-strip=$(LLVM_STRIP)" \\
+\t\tBPF_CFLAGS="$(DAE_CFLAGS)" \\
+\t\tBPF_TARGET="bpfel,bpfeb" \\
+\t\tBPF_TRACE_TARGET="$(GO_ARCH)" ; \\
+\t\t$(MAKE) \\
+\t\t\tOUTPUT="$(PKG_BUILD_DIR)/daed" \\
+\t\t\tAPPNAME="$(PKG_NAME)" \\
+\t\t\tDESCRIPTION="$(PKG_NAME) is a integration solution of dae, API and UI." \\
+\t\t\tVERSION="$(DAED_VERSION)_$(WING_VERSION)_$(CORE_VERSION)" \\
+\t\t\tWEB_DIST="$(DAED_BUILD_DIR)/apps/web/dist" \\
+\t\t\tGO_LDFLAGS="-buildid= -linkmode external -extldflags '-static -Wl,-s'" \\
+\t\t\tbundle ; \\
+\t\tpopd ; \\
+\t)
+endef
+""",
+        "daed Build/Compile block",
+    ),
+    (
+        """define Package/daed/install
+\t$(call GoPackage/Package/Install/Bin,$(PKG_INSTALL_DIR))
+\t$(INSTALL_DIR) $(1)/usr/bin
+\t$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/dae-wing $(1)/usr/bin/daed
+""",
+        """define Package/daed/install
+\t$(INSTALL_DIR) $(1)/usr/bin
+\t$(INSTALL_BIN) $(PKG_BUILD_DIR)/daed $(1)/usr/bin/daed
+""",
+        "daed Package/install block",
+    ),
+]
+
+changed = False
+for old, new, label in replacements:
+    if new in text:
+        continue
+    if old not in text:
+        raise SystemExit(f"Expected block not found while patching {label}: {path}")
+    text = text.replace(old, new, 1)
+    changed = True
+
+if changed:
+    path.write_text(text, encoding="utf-8")
+    print("Applied daed bundle compatibility patch.")
+else:
+    print("daed bundle compatibility patch is already present.")
+PY
       ;;
     *)
       echo "Unknown vendor hook: ${hook}"
@@ -242,7 +394,7 @@ prepare_custom_packages() {
     copy_specs="$(trim_whitespace "${BASH_REMATCH[4]}")"
     hook="$(trim_whitespace "${BASH_REMATCH[6]:-}")"
 
-    if ! config_package_enabled "${package_name}"; then
+    if ! vendor_package_required "${package_name}"; then
       continue
     fi
 
