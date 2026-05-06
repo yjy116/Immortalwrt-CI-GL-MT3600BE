@@ -34,7 +34,7 @@ CONFIG_TARGET_ROOTFS_INITRAMFS=n
 # @vendor luci-app-tailscale|https://github.com/asvow/luci-app-tailscale.git|main|.:package/luci-app-tailscale|tailscale-compat
 # @vendor luci-app-mini-diskmanager|https://github.com/4IceG/luci-app-mini-diskmanager.git|main|.:package/luci-app-mini-diskmanager|
 # @vendor luci-app-iperf3|https://github.com/Gevatter-Tod/luci-app-iperf3.git|main|.:package/luci-app-iperf3|
-# @vendor luci-app-daed|https://github.com/ash0080/luci-app-daed.git|master|daed:package/daed;luci-app-daed:package/luci-app-daed|
+# @vendor luci-app-daed|https://github.com/QiuSimons/luci-app-daed.git|kix|daed:package/daed;luci-app-daed:package/luci-app-daed|
 
 # LuCI 基础
 # autocore 用来给状态页补充 CPU/WiFi 温度等信息。
