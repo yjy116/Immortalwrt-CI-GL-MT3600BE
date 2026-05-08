@@ -32,7 +32,7 @@ CONFIG_TARGET_ROOTFS_INITRAMFS=n
 # @vendor luci-app-openclash|https://github.com/vernesong/OpenClash.git|dev|luci-app-openclash:package/luci-app-openclash|po2lmo
 # @vendor luci-app-fancontrol|https://github.com/bigmalloy/luci-app-fancontrol.git|main|openwrt-feed:package/luci-app-fancontrol|
 # @vendor luci-app-tailscale|https://github.com/asvow/luci-app-tailscale.git|main|.:package/luci-app-tailscale|tailscale-compat
-# @vendor luci-app-mini-diskmanager|https://github.com/4IceG/luci-app-mini-diskmanager.git|main|.:package/luci-app-mini-diskmanager|mini-diskmanager-menu
+# @vendor luci-app-mini-diskmanager|https://github.com/4IceG/luci-app-mini-diskmanager.git|main|.:package/luci-app-mini-diskmanager|
 # @vendor luci-app-iperf3|https://github.com/Gevatter-Tod/luci-app-iperf3.git|main|.:package/luci-app-iperf3|
 # @vendor luci-app-easytier|https://github.com/EasyTier/luci-app-easytier.git|main|.:package/easytier-openwrt|
 
