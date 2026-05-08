@@ -255,3 +255,37 @@
 - 公共工作流继续复用 `WRT-CORE.yml`
 
 这样后续要扩展到更多设备时，迁移成本会低很多。
+## @vendor 规则与 hook 说明
+
+`Config/GENERAL.txt` 里的第三方插件声明使用统一的 `@vendor` 规则，格式如下：
+
+```txt
+# @vendor <config-package>|<repo-url>|<branch>|<src-rel>:<dst-rel>[;<src-rel>:<dst-rel>...]|<hook>
+```
+
+字段含义如下：
+
+- `config-package`：对应的 `CONFIG_PACKAGE_*` 包名，用来判断这个第三方插件是否需要参与编译
+- `repo-url`：第三方插件源码仓库地址
+- `branch`：需要拉取的分支
+- `src-rel:dst-rel`：把仓库中的相对路径复制到编译树中的目标路径
+- `hook`：可选的后处理动作名称；留空或写 `none` 表示只同步源码，不做额外修正
+
+当前项目里常见的 hook 作用如下：
+
+- `po2lmo`：为部分第三方 LuCI 插件补齐语言文件编译流程
+- `tailscale-compat`：修正第三方 `luci-app-tailscale` 与当前编译源之间的兼容问题
+- `mini-diskmanager-menu`：仅调整 `luci-app-mini-diskmanager` 的菜单位置，把它从“服务”移动到“系统”
+
+需要新增第三方插件时，建议优先按下面顺序处理：
+
+1. 先确认上游官方 feed 是否已经自带该插件
+2. 只有上游没有时，再在 `GENERAL.txt` 里增加 `@vendor` 规则
+3. 如果第三方插件只是菜单位置、语言编译、路径结构这类小问题，再通过 hook 做最小修正
+4. 不要直接改插件主体源码，尽量把兼容逻辑收敛到 `Scripts/Packages.sh`
+
+这样做的好处是：
+
+- 结构清晰，后期迁移到其它机型时更容易复用
+- 第三方改动集中，排查问题时不容易漏
+- 能尽量跟随上游，减少无意义的本地分叉
