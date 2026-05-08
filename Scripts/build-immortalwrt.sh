@@ -156,7 +156,6 @@ prepare_feeds_and_config() {
   ./scripts/feeds install -a
   sanitize_homeproxy_i18n_conflict
 
-  hotfix_upstream_filogic_mk_parse_error
   validate_device_support
   apply_config_fragments
   refresh_cached_host_tool_stamps

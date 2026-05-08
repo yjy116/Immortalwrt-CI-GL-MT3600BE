@@ -154,24 +154,6 @@ validate_device_support() {
   fi
 }
 
-# Temporary upstream hotfix for VIKINGYFY/immortalwrt@owrt.
-# The current target/linux/mediatek/image/filogic.mk contains a stray
-# trailing backslash in the supergateway_s20m DEVICE_PACKAGES block.
-# GNU make then treats the following "endef" incorrectly and aborts with:
-#   filogic.mk:927: *** missing 'endef', unterminated 'define'.  Stop.
-# We patch the exact known-bad line locally before defconfig/build.
-hotfix_upstream_filogic_mk_parse_error() {
-  local filogic_mk="target/linux/mediatek/image/filogic.mk"
-
-  [[ -f "${filogic_mk}" ]] || return 0
-
-  if grep -Fq "DEVICE_DTS := mt7986a-supergateway-s20m" "${filogic_mk}" && \
-     grep -Fq -- "-kmod-mt7915-firmware -kmod-mt7916-firmware -kmod-mt7986-firmware -mt7986-wo-firmware \\" "${filogic_mk}"; then
-    sed -i '/DEVICE_DTS := mt7986a-supergateway-s20m/,/endef/ s/-mt7986-wo-firmware \\/-mt7986-wo-firmware/' "${filogic_mk}"
-    echo "Applied temporary upstream hotfix: filogic.mk supergateway_s20m endef parse issue."
-  fi
-}
-
 # 在 make defconfig 之后检查关键符号是否还存在。
 # 这里不强制失败，只做提醒，避免编出一版“进去之后没中文”的固件却不自知。
 validate_required_config_symbols() {
