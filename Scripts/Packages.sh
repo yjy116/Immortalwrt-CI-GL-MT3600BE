@@ -132,6 +132,15 @@ run_vendor_hook() {
         fi
       done
       ;;
+    mini-diskmanager-menu)
+      # mini-diskmanager 默认挂在“服务”菜单下。
+      # 这里仅调整 LuCI 菜单路径到“系统”，不改插件本身功能逻辑。
+      local menu_file="${repo_dir}/luci-app-mini-diskmanager/root/usr/share/luci/menu.d/luci-app-mini-diskmanager.json"
+      if [[ -f "${menu_file}" ]]; then
+        sed -i 's#"admin/services/mini-diskmanager"#"admin/system/mini-diskmanager"#g' "${menu_file}"
+        echo "Moved mini-diskmanager menu to admin/system: ${menu_file}"
+      fi
+      ;;
     *)
       echo "Unknown vendor hook: ${hook}"
       exit 1
