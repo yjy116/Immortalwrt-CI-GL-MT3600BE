@@ -89,6 +89,10 @@
 - `luci-app-fancontrol`
 - `luci-app-tailscale`
 - `luci-app-iperf3`
+- `luci-app-easytier`
+
+`luci-app-easytier` 使用 EasyTier 官方 OpenWrt 仓库接入，菜单位置为 `VPN -> EasyTier`。
+当前配置同时启用了 `easytier` 核心程序，因此刷机后无需再手动上传核心二进制即可直接使用。
 
 ### 3. 机型相关配置
 
@@ -105,7 +109,7 @@
 当前这份配置已经整理出比较稳定的一套常用能力：
 
 - 代理与去广告：`homeproxy`、`openclash`、`adguardhome`
-- 组网与远程接入：`tailscale`、`zerotier`、`wireguard`
+- 组网与远程接入：`tailscale`、`zerotier`、`wireguard`、`easytier`
 - 网络管理：`ddns`、`upnp`、`sqm`、`nlbwmon`
 - 系统维护：`ttyd`、`autoreboot`、`turboacc`
 - 局域网与共享：`samba4`、`wolplus`
