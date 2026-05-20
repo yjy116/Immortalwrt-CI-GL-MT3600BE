@@ -19,11 +19,6 @@ on:
         required: true
         default: true
         type: boolean
-      safe_cache_cleanup:
-        description: 是否跳过并清理本次 ccache 编译缓存
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -41,6 +36,5 @@ jobs:
       wrt_theme: aurora
       wrt_branch: ${{ inputs.immortalwrt_branch }}
       cleanup_runner: ${{ inputs.cleanup_runner }}
-      safe_cache_cleanup: ${{ inputs.safe_cache_cleanup }}
       publish_release: false
       test_only: true

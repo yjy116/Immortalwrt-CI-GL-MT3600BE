@@ -1,0 +1,111 @@
+name: Clear-Cache
+
+run-name: >-
+  清理缓存 | 范围=${{ inputs.cache_scope }} | 执行者=${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_scope:
+        description: 清理范围。默认 all 会一键清理本仓库全部 GitHub Actions 缓存。
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - build
+          - host-toolchain
+          - ccache
+          - download
+
+permissions:
+  # 删除 GitHub Actions Cache 需要 actions: write。
+  actions: write
+  contents: read
+
+jobs:
+  clear-cache:
+    name: 清理 GitHub Actions 缓存
+    runs-on: ubuntu-latest
+    steps:
+      - name: 按范围删除缓存
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_SCOPE: ${{ inputs.cache_scope }}
+        run: |
+          set -euo pipefail
+
+          case "${CACHE_SCOPE}" in
+            all|build|host-toolchain|ccache|download)
+              ;;
+            *)
+              echo "不支持的 cache_scope：${CACHE_SCOPE}" >&2
+              exit 2
+              ;;
+          esac
+
+          matches_scope() {
+            local key="$1"
+
+            case "${CACHE_SCOPE}" in
+              all)
+                return 0
+                ;;
+              build)
+                [[ "${key}" == *"ccache"* || "${key}" == *"hosttool"* ]]
+                ;;
+              host-toolchain)
+                [[ "${key}" == *"hosttool"* ]]
+                ;;
+              ccache)
+                [[ "${key}" == *"ccache"* ]]
+                ;;
+              download)
+                [[ "${key}" == *"-dl-"* ]]
+                ;;
+            esac
+          }
+
+          echo "准备清理范围：${CACHE_SCOPE}"
+          echo "仓库：${GITHUB_REPOSITORY}"
+
+          mapfile -t cache_rows < <(
+            gh api --paginate \
+              "/repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" \
+              --jq '.actions_caches[] | [.id, .key, .size_in_bytes, .ref, .last_accessed_at] | @tsv'
+          )
+
+          matched_rows=()
+          for row in "${cache_rows[@]}"; do
+            IFS=$'\t' read -r cache_id cache_key cache_size cache_ref cache_last_accessed <<< "${row}"
+            if matches_scope "${cache_key}"; then
+              matched_rows+=("${row}")
+            fi
+          done
+
+          if [[ "${#matched_rows[@]}" -eq 0 ]]; then
+            echo "没有找到匹配 ${CACHE_SCOPE} 的缓存，本次无需清理。"
+            exit 0
+          fi
+
+          echo "将删除以下缓存："
+          total_size=0
+          for row in "${matched_rows[@]}"; do
+            IFS=$'\t' read -r cache_id cache_key cache_size cache_ref cache_last_accessed <<< "${row}"
+            total_size=$((total_size + cache_size))
+            printf '  - id=%s size=%s ref=%s last_accessed=%s key=%s\n' \
+              "${cache_id}" "${cache_size}" "${cache_ref}" "${cache_last_accessed}" "${cache_key}"
+          done
+          echo "匹配数量：${#matched_rows[@]}"
+          echo "匹配总大小 bytes：${total_size}"
+
+          for row in "${matched_rows[@]}"; do
+            IFS=$'\t' read -r cache_id cache_key cache_size cache_ref cache_last_accessed <<< "${row}"
+            echo "删除缓存：id=${cache_id} key=${cache_key}"
+            gh api \
+              --method DELETE \
+              "/repos/${GITHUB_REPOSITORY}/actions/caches/${cache_id}"
+          done
+
+          echo "缓存清理完成。"

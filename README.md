@@ -48,6 +48,8 @@
   正式编译工作流，可自动发布 Release。
 - [Auto-Build.yml](./.github/workflows/Auto-Build.yml)  
   定时自动编译工作流，用来兜底日常手动忘跑的情况。
+- [Clear-Cache.yml](./.github/workflows/Clear-Cache.yml)
+  手动一键清理 GitHub Actions 远端缓存，用于上游大变、缓存污染或空间异常。
 - [WRT-CORE.yml](./.github/workflows/WRT-CORE.yml)  
   公共核心工作流，测试和正式编译都会复用它。
 
@@ -241,36 +243,33 @@
 
 - `MT3600BE`
 
-### 安全 cache 清理
+### 一键清理缓存
 
-手动运行 `MT3600BE` 或 `MT3600BE-TEST` 时，会看到 `safe_cache_cleanup` 选项。
+项目提供了单独的 `Clear-Cache` 工作流，用来手动清理 GitHub Actions 远端缓存。
 
-默认建议保持不勾选，这样可以继续使用 `ccache` 和 `host/toolchain` 缓存，编译速度最快。
+进入方式：
 
-只有在下面这些情况才建议勾选：
+1. 打开 GitHub 仓库的 `Actions`
+2. 选择左侧 `Clear-Cache`
+3. 点击 `Run workflow`
+4. 默认 `cache_scope=all`，直接运行就是一键清理全部缓存
 
-- 明明改动很小，但编译行为异常
-- 怀疑 `ccache` 或 `host/toolchain` 缓存污染
-- 上游大幅更新后，想让工具链和编译缓存干净重建一次
+建议使用场景：
 
-勾选后会发生的事情：
+- 上游源码大幅变更，旧 `host/toolchain` 缓存可能不再适合继续复用
+- 编译行为异常，怀疑 `ccache` 或工具链缓存污染
+- GitHub Actions cache 空间异常，想一次性释放仓库缓存空间
 
-- 本次运行跳过 `ccache` 缓存恢复
-- 本次运行跳过 `host/toolchain` 缓存恢复
-- 本次运行清理本地恢复出的 `ccache`、`host/toolchain` 编译缓存
-- `dl` 下载缓存仍然保留，避免所有源码包重新下载
-- 编译成功后仍会保存新的可用缓存，后续运行可以继续提速
+可选清理范围：
 
-它不会做的事情：
+- `all`：清理本仓库全部 GitHub Actions 缓存，最适合上游大变、缓存污染、空间异常这类场景
+- `build`：只清理编译缓存，包括 `ccache` 和 `host/toolchain`
+- `host-toolchain`：只清理 host 工具和交叉工具链缓存
+- `ccache`：只清理 `ccache`
+- `download`：只清理 `dl` 下载缓存，一般只有下载包损坏或下载缓存异常时才需要
 
-- 不会删除 GitHub Actions 远端 cache
-- 不会清理 Release 产物
-- 不会修改固件配置
-- 不会改变定时自动编译的默认行为
-
-一句话建议：
-
-平时不勾选；遇到疑似缓存污染时勾选跑一次，成功后下一次再恢复默认不勾选。
+清理完成后，下一次正式编译会重新生成缓存。
+这会让第一次编译变慢，但后续成功跑过一次后，缓存会重新建立起来。
 
 ## 定时自动编译
 
