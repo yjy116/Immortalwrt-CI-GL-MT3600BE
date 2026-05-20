@@ -45,6 +45,13 @@ on:
         type: boolean
         default: true
 
+      # safe_cache_cleanup=true 时只清理本次运行恢复出的编译缓存。
+      # 它不会删除 GitHub 远端 Actions Cache，也不会清理 dl 下载缓存。
+      safe_cache_cleanup:
+        required: false
+        type: boolean
+        default: false
+
       # 正式编译时可以选择是否自动发布到 GitHub Releases。
       publish_release:
         required: false
@@ -163,6 +170,22 @@ jobs:
           df -h /
           df -h "${work_root}"
 
+      # 安全 cache 清理模式：
+      # - 保留 dl 下载缓存，避免重新下载所有源码包
+      # - 跳过并清空 ccache、host/toolchain 这类编译产物缓存
+      # - 不调用 GitHub API 删除远端 cache，避免误删可用缓存
+      - name: 安全清理本次 ccache 缓存
+        if: ${{ inputs.safe_cache_cleanup }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${CCACHE_DIR:?CCACHE_DIR is required}"
+
+          echo "safe_cache_cleanup=true：本次运行不恢复 ccache，并清空本地 ccache 目录。"
+          find "${CCACHE_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          mkdir -p "${CCACHE_DIR}"
+
       # dl 缓存：下载过的源码包、补丁和工具压缩包。
       - name: 恢复下载缓存
         uses: actions/cache/restore@v5
@@ -175,6 +198,7 @@ jobs:
 
       # ccache：重复编译时的最直接提速手段之一。
       - name: 恢复 ccache 缓存
+        if: ${{ !inputs.safe_cache_cleanup }}
         uses: actions/cache/restore@v5
         with:
           path: ${{ steps.workspace.outputs.ccache_dir }}
@@ -199,10 +223,28 @@ jobs:
           set -euo pipefail
           bash Scripts/build-immortalwrt.sh prepare-tree
 
+      # 清理 host/toolchain 的本地恢复结果，不删除 GitHub 远端 cache。
+      # 用于怀疑工具链缓存污染时做一次干净重建。
+      - name: 安全清理本次 host/toolchain 缓存
+        if: ${{ !inputs.test_only && inputs.safe_cache_cleanup }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          : "${BUILD_ROOT:?BUILD_ROOT is required}"
+
+          staging_dir="${BUILD_ROOT}/staging_dir"
+          echo "safe_cache_cleanup=true：本次运行不恢复 host/toolchain，并清理本地 staging_dir 编译缓存。"
+
+          if [[ -d "${staging_dir}" ]]; then
+            rm -rf "${staging_dir}/host" "${staging_dir}/hostpkg"
+            find "${staging_dir}" -maxdepth 1 -type d -name 'toolchain-*' -exec rm -rf {} +
+          fi
+
       # host/toolchain 缓存是第一次成功后最关键的提速来源。
       - name: 恢复 host/toolchain 缓存
         id: host_tool_cache
-        if: ${{ !inputs.test_only }}
+        if: ${{ !inputs.test_only && !inputs.safe_cache_cleanup }}
         uses: actions/cache/restore@v5
         with:
           path: |

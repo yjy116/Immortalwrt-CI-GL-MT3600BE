@@ -73,4 +73,5 @@ jobs:
       wrt_theme: aurora
       wrt_branch: owrt
       cleanup_runner: true
+      safe_cache_cleanup: false
       publish_release: true

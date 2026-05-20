@@ -19,6 +19,11 @@ on:
         required: true
         default: true
         type: boolean
+      safe_cache_cleanup:
+        description: 是否跳过并清理本次 ccache 与 host/toolchain 编译缓存
+        required: true
+        default: false
+        type: boolean
       publish_release:
         description: 编译成功后是否自动发布到 GitHub Releases
         required: true
@@ -53,4 +58,5 @@ jobs:
       wrt_theme: aurora
       wrt_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.immortalwrt_branch || 'owrt' }}
       cleanup_runner: ${{ github.event_name != 'workflow_dispatch' || inputs.cleanup_runner }}
+      safe_cache_cleanup: ${{ github.event_name == 'workflow_dispatch' && inputs.safe_cache_cleanup || false }}
       publish_release: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_release }}
