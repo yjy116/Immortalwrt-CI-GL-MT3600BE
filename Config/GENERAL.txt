@@ -106,7 +106,7 @@ CONFIG_PACKAGE_openssl-util=y
 
 # 网络 / 代理 / 管理插件
 # 其中 luci-app-turboacc 主要是加速控制面板；
-# 真正的 MTK 硬件加速还要依赖下面的 kmod-mtk-eth-warp、nft offload 等底层模块。
+# MTK WED / ethwarp 支持由上游 DTS 和内核配置提供，这里只显式编入 nft offload 等可选模块。
 # AdGuard Home 官方 feed 已自带，但当前上游 LuCI 包暂无简中翻译，
 # 所以这里只启用功能包和管理页面本体，不额外添加 luci-i18n-zh-cn 项。
 # 同时按 VIKINGYFY/OpenWRT-CI 的 GENERAL.txt 补齐当前项目原先缺少的常用 LuCI 插件。
@@ -174,7 +174,6 @@ CONFIG_PACKAGE_ddns-scripts-cloudflare=y
 CONFIG_PACKAGE_ddns-scripts-aliyun=y
 CONFIG_PACKAGE_ddns-scripts-dnspod-v3=y
 CONFIG_PACKAGE_kmod-nft-tproxy=y
-CONFIG_PACKAGE_kmod-mtk-eth-warp=y
 CONFIG_PACKAGE_kmod-nft-offload=y
 CONFIG_PACKAGE_kmod-tcp-bbr=y
 CONFIG_PACKAGE_kmod-veth=y

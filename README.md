@@ -208,10 +208,18 @@
 - `homeproxy` 使用官方 feed，不再额外挂第三方主包源
 - `tailscale` 已切换为 `asvow/luci-app-tailscale`
 - `luci-app-turboacc` 保留作为加速控制面板
-- MTK 硬件加速仍依赖底层内核模块，例如 `kmod-mtk-eth-warp`、`kmod-nft-offload`
+- MTK WED / ethwarp 支持来自上游 DTS、内核配置和 mt76 参数；本项目只显式编入 `kmod-nft-offload`、`kmod-nft-fullcone` 等可选加速模块
 - 温度显示不再依赖 `luci-app-temp-status`，而是使用 `autocore`
 - Aurora 主题由 `Packages.sh` 和 `Settings.sh` 自动处理，不需要手动反复改主题包配置
 - 中文语言采用“自动补齐 + 宽松校验”策略：尽量补齐，但不会因为单个语言包缺失就阻断整个编译
+
+## MTK 硬件加速说明
+
+- `luci-app-turboacc` 是加速开关和 LuCI 控制面板，不等于硬件加速驱动本体
+- MT7987A 的 WED / ethwarp 节点由 `VIKINGYFY/immortalwrt@owrt` 上游源码提供，当前项目不再写入不存在或未生成的 `kmod-mtk-eth-warp`
+- 固件会显式编入 `kmod-nft-offload`、`kmod-nft-fullcone`，后续可在 LuCI 防火墙或 TurboACC 页面按需开启软件 / 硬件 Flow Offloading
+- 不默认强制开启硬件 Flow Offloading，因为 HomeProxy、daed、SQM、流量统计等场景可能需要按实际使用情况取舍
+- 验证时可以先看 Release 里的 `*.manifest` 是否包含 `kmod-nft-offload`、`kmod-nft-fullcone`，刷机后再到 LuCI 页面确认开关状态
 
 ## 推荐使用方式
 
